@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My AI Chatbot</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, sans-serif;
+    background: #e5ddd5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+  .app {
+    width: 700px;
+    height: 600px;
+    background: white;
+    border-radius: 10px;
+    display: flex;
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+    overflow: hidden;
+  }
+  /* Sidebar */
+  .sidebar {
+    width: 220px;
+    background: #f7f7f7;
+    border-right: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-header {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+  }
+  .new-chat-btn {
+    width: 100%;
+    padding: 8px;
+    background: #075e54;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .session-list { flex: 1; overflow-y: auto; }
+  .session-item {
+    padding: 10px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .session-item:hover { background: #eee; }
+  .session-item.active { background: #dcf8c6; font-weight: bold; }
+
+  /* Chat area */
+  .chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-header {
+    background: #075e54;
+    color: white;
+    padding: 15px;
+    font-size: 18px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .menu-btn { display: none; background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
+  .clear-btn {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 15px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .clear-btn:hover { background: rgba(255,255,255,0.35); }
+  .chat-messages {
+    flex: 1;
+    padding: 15px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .message-row { display: flex; align-items: flex-end; gap: 8px; }
+  .message-row.user-row { justify-content: flex-end; }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex-shrink: 0;
+  }
+  .bot-avatar { background: #075e54; }
+  .user-avatar { background: #34b7f1; }
+  .message-block { max-width: 70%; }
+  .message {
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .message p { margin-bottom: 6px; }
+  .message ul, .message ol { margin-left: 18px; margin-bottom: 6px; }
+  .message code { background: rgba(0,0,0,0.08); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+  .user-message { background: #dcf8c6; }
+  .bot-message { background: #f1f0f0; }
+  .timestamp { font-size: 10px; color: #999; margin-top: 3px; }
+  .user-row .timestamp { text-align: right; }
+  .chat-input { display: flex; padding: 10px; border-top: 1px solid #ddd; gap: 6px; }
+  .chat-input input {
+    flex: 1; padding: 10px; border: 1px solid #ccc;
+    border-radius: 20px; outline: none; font-size: 14px;
+  }
+  .mic-btn, .send-btn {
+    padding: 10px 14px; background: #075e54; color: white;
+    border: none; border-radius: 20px; cursor: pointer; font-size: 14px;
+  }
+  .mic-btn.recording { background: #d9534f; }
+  .mic-btn:hover, .send-btn:hover { background: #064c43; }
+
+  .typing-dots span {
+    display: inline-block; width: 6px; height: 6px; margin: 0 1px;
+    background: #999; border-radius: 50%; animation: blink 1.4s infinite both;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+
+  /* Mobile responsive */
+  @media (max-width: 700px) {
+    body { height: 100vh; }
+    .app { width: 100vw; height: 100vh; border-radius: 0; }
+    .sidebar {
+      position: absolute; left: -220px; top: 0; bottom: 0;
+      z-index: 10; transition: left 0.2s; height: 100%;
+    }
+    .sidebar.open { left: 0; }
+    .menu-btn { display: block; }
+    .message-block { max-width: 85%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
+    </div>
+    <div class="session-list" id="sessionList"></div>
+  </div>
+
+  <div class="chat-container">
+    <div class="chat-header">
+      <span><button class="menu-btn" onclick="toggleSidebar()">☰</button> 🤖 My AI Chatbot</span>
+      <button class="clear-btn" onclick="clearChat()">Delete Chat</button>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input">
+      <input type="text" id="userInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
+      <button class="mic-btn" id="micBtn" onclick="toggleVoice()">🎤</button>
+      <button class="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_URL = "http://127.0.0.1:8000/chat";
+const chatMessages = document.getElementById("chatMessages");
+const userInput = document.getElementById("userInput");
+const sessionList = document.getElementById("sessionList");
+const sidebar = document.getElementById("sidebar");
+
+let sessions = JSON.parse(localStorage.getItem("chatbot_sessions") || "{}");
+let currentSessionId = null;
+
+function saveSessions() {
+  localStorage.setItem("chatbot_sessions", JSON.stringify(sessions));
+}
+
+function getTime() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function newChat() {
+  const id = "chat_" + Date.now();
+  sessions[id] = { title: "New Chat", messages: [] };
+  currentSessionId = id;
+  saveSessions();
+  renderSessionList();
+  renderMessages();
+  toggleSidebar(true);
+}
+
+function switchSession(id) {
+  currentSessionId = id;
+  renderSessionList();
+  renderMessages();
+  toggleSidebar(true);
+}
+
+function clearChat() {
+  if (!currentSessionId) return;
+  delete sessions[currentSessionId];
+  saveSessions();
+  const ids = Object.keys(sessions);
+  if (ids.length > 0) {
+    currentSessionId = ids[0];
+  } else {
+    newChat();
+    return;
+  }
+  renderSessionList();
+  renderMessages();
+}
+
+function renderSessionList() {
+  sessionList.innerHTML = "";
+  Object.keys(sessions).reverse().forEach(id => {
+    const item = document.createElement("div");
+    item.className = "session-item" + (id === currentSessionId ? " active" : "");
+    item.textContent = sessions[id].title;
+    item.onclick = () => switchSession(id);
+    sessionList.appendChild(item);
+  });
+}
+
+function renderMessages() {
+  chatMessages.innerHTML = "";
+  const session = sessions[currentSessionId];
+  if (!session) return;
+  session.messages.forEach(m => addMessageToDOM(m.text, m.role === "user" ? "user" : "bot", m.time));
+}
+
+function addMessageToDOM(text, sender, time) {
+  const row = document.createElement("div");
+  row.className = "message-row " + (sender === "user" ? "user-row" : "");
+
+  const avatar = document.createElement("div");
+  avatar.className = "avatar " + (sender === "user" ? "user-avatar" : "bot-avatar");
+  avatar.textContent = sender === "user" ? "🧑" : "🤖";
+
+  const block = document.createElement("div");
+  block.className = "message-block";
+
+  const msgDiv = document.createElement("div");
+  msgDiv.className = "message " + (sender === "user" ? "user-message" : "bot-message");
+  msgDiv.innerHTML = sender === "bot" ? marked.parse(text) : text;
+
+  const timeDiv = document.createElement("div");
+  timeDiv.className = "timestamp";
+  timeDiv.textContent = time || getTime();
+
+  block.appendChild(msgDiv);
+  block.appendChild(timeDiv);
+
+  if (sender === "user") { row.appendChild(block); row.appendChild(avatar); }
+  else { row.appendChild(avatar); row.appendChild(block); }
+
+  chatMessages.appendChild(row);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function addTypingIndicator() {
+  const row = document.createElement("div");
+  row.className = "message-row";
+  row.id = "typingRow";
+  const avatar = document.createElement("div");
+  avatar.className = "avatar bot-avatar";
+  avatar.textContent = "🤖";
+  const msgDiv = document.createElement("div");
+  msgDiv.className = "message bot-message typing-dots";
+  msgDiv.innerHTML = "<span></span><span></span><span></span>";
+  row.appendChild(avatar);
+  row.appendChild(msgDiv);
+  chatMessages.appendChild(row);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const row = document.getElementById("typingRow");
+  if (row) row.remove();
+}
+
+async function sendMessage() {
+  const message = userInput.value.trim();
+  if (!message || !currentSessionId) return;
+
+  const session = sessions[currentSessionId];
+  if (session.messages.length === 0) {
+    session.title = message.slice(0, 25);
+  }
+
+  const userTime = getTime();
+  session.messages.push({ role: "user", text: message, time: userTime });
+  addMessageToDOM(message, "user", userTime);
+  userInput.value = "";
+  saveSessions();
+  renderSessionList();
+  addTypingIndicator();
+
+  const history = session.messages.slice(0, -1).map(m => ({ role: m.role === "user" ? "user" : "model", text: m.text }));
+
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: message, history: history })
+    });
+    const data = await response.json();
+    removeTypingIndicator();
+    const botTime = getTime();
+    session.messages.push({ role: "model", text: data.reply, time: botTime });
+    addMessageToDOM(data.reply, "bot", botTime);
+    saveSessions();
+  } catch (error) {
+    removeTypingIndicator();
+    addMessageToDOM("⚠️ Could not connect to server. Check if backend is running.", "bot", getTime());
+  }
+}
+
+function toggleSidebar(forceClose) {
+  if (window.innerWidth > 700) return;
+  if (forceClose) { sidebar.classList.remove("open"); return; }
+  sidebar.classList.toggle("open");
+}
+
+// Voice input
+let recognition = null;
+let isRecording = false;
+const micBtn = document.getElementById("micBtn");
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.lang = "en-US";
+
+  recognition.onresult = (event) => {
+    userInput.value = event.results[0][0].transcript;
+  };
+  recognition.onend = () => {
+    isRecording = false;
+    micBtn.classList.remove("recording");
+  };
+} else {
+  micBtn.style.display = "none";
+}
+
+function toggleVoice() {
+  if (!recognition) return;
+  if (isRecording) {
+    recognition.stop();
+    isRecording = false;
+    micBtn.classList.remove("recording");
+  } else {
+    recognition.start();
+    isRecording = true;
+    micBtn.classList.add("recording");
+  }
+}
+
+// Init
+if (Object.keys(sessions).length === 0) {
+  newChat();
+} else {
+  currentSessionId = Object.keys(sessions)[Object.keys(sessions).length - 1];
+  renderSessionList();
+  renderMessages();
+}
+</script>
+
+</body>
+</html>
