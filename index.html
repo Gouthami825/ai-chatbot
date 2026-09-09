@@ -24,7 +24,6 @@
     box-shadow: 0 0 15px rgba(0,0,0,0.2);
     overflow: hidden;
   }
-  /* Sidebar */
   .sidebar {
     width: 220px;
     background: #f7f7f7;
@@ -59,7 +58,6 @@
   .session-item:hover { background: #eee; }
   .session-item.active { background: #dcf8c6; font-weight: bold; }
 
-  /* Chat area */
   .chat-container {
     flex: 1;
     display: flex;
@@ -137,7 +135,6 @@
   .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
   @keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
 
-  /* Mobile responsive */
   @media (max-width: 700px) {
     body { height: 100vh; }
     .app { width: 100vw; height: 100vh; border-radius: 0; }
@@ -312,22 +309,46 @@ async function sendMessage() {
 
   const history = session.messages.slice(0, -1).map(m => ({ role: m.role === "user" ? "user" : "model", text: m.text }));
 
-  try {
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: message, history: history })
-    });
-    const data = await response.json();
-    removeTypingIndicator();
-    const botTime = getTime();
-    session.messages.push({ role: "model", text: data.reply, time: botTime });
-    addMessageToDOM(data.reply, "bot", botTime);
-    saveSessions();
-  } catch (error) {
-    removeTypingIndicator();
-    addMessageToDOM("⚠️ Could not connect to server. Check if backend is running.", "bot", getTime());
+  const maxRetries = 3;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message, history: history }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) throw new Error("Server error");
+
+      const data = await response.json();
+      removeTypingIndicator();
+      const botTime = getTime();
+      session.messages.push({ role: "model", text: data.reply, time: botTime });
+      addMessageToDOM(data.reply, "bot", botTime);
+      saveSessions();
+      return;
+
+    } catch (error) {
+      if (attempt < maxRetries) {
+        const typingRow = document.getElementById("typingRow");
+        if (typingRow) {
+          const msgDiv = typingRow.querySelector(".message");
+          msgDiv.classList.remove("typing-dots");
+          msgDiv.textContent = `⏳ Server waking up, retrying... (${attempt}/${maxRetries})`;
+        }
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
   }
+
+  removeTypingIndicator();
+  addMessageToDOM("⚠️ Server took too long to respond. Please wait a moment and try again.", "bot", getTime());
 }
 
 function toggleSidebar(forceClose) {
@@ -336,7 +357,6 @@ function toggleSidebar(forceClose) {
   sidebar.classList.toggle("open");
 }
 
-// Voice input
 let recognition = null;
 let isRecording = false;
 const micBtn = document.getElementById("micBtn");
@@ -371,7 +391,6 @@ function toggleVoice() {
   }
 }
 
-// Init
 if (Object.keys(sessions).length === 0) {
   newChat();
 } else {
