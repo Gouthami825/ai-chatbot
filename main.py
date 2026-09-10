@@ -64,6 +64,7 @@ async def whatsapp_reply(request: Request):
         )
         twiml.message(response.text)
     except Exception as e:
+        print(f"WHATSAPP ERROR: {e}")
         twiml.message("Sorry, I'm having trouble right now. Please try again in a moment.")
 
     return Response(content=str(twiml), media_type="application/xml")
