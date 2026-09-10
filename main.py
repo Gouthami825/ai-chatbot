@@ -1,9 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from twilio.twiml.messaging_response import MessagingResponse
 import os
 
 load_dotenv()
@@ -24,7 +26,7 @@ def health_check():
     return {"status": "ok", "message": "Server is running!"}
 
 class HistoryItem(BaseModel):
-    role: str   # "user" or "model"
+    role: str
     text: str
 
 class ChatRequest(BaseModel):
@@ -47,3 +49,18 @@ def chat(request: ChatRequest):
         contents=contents
     )
     return {"reply": response.text}
+
+
+@app.post("/whatsapp")
+async def whatsapp_reply(request: Request):
+    form = await request.form()
+    incoming_msg = form.get("Body", "")
+
+    response = client.models.generate_content(
+        model="gemini-3.6-flash",
+        contents=incoming_msg
+    )
+
+    twiml = MessagingResponse()
+    twiml.message(response.text)
+    return Response(content=str(twiml), media_type="application/xml")
