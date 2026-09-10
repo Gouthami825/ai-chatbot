@@ -56,11 +56,14 @@ async def whatsapp_reply(request: Request):
     form = await request.form()
     incoming_msg = form.get("Body", "")
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=incoming_msg
-    )
-
     twiml = MessagingResponse()
-    twiml.message(response.text)
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=incoming_msg
+        )
+        twiml.message(response.text)
+    except Exception as e:
+        twiml.message("Sorry, I'm having trouble right now. Please try again in a moment.")
+
     return Response(content=str(twiml), media_type="application/xml")
