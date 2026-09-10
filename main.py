@@ -51,20 +51,32 @@ def chat(request: ChatRequest):
     return {"reply": response.text}
 
 
+import time
+
 @app.post("/whatsapp")
 async def whatsapp_reply(request: Request):
     form = await request.form()
     incoming_msg = form.get("Body", "")
 
     twiml = MessagingResponse()
-    try:
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=incoming_msg
-        )
-        twiml.message(response.text)
-    except Exception as e:
-        print(f"WHATSAPP ERROR: {e}")
-        twiml.message("Sorry, I'm having trouble right now. Please try again in a moment.")
+    max_retries = 2
+    reply_text = None
 
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=incoming_msg
+            )
+            reply_text = response.text
+            break
+        except Exception as e:
+            print(f"WHATSAPP ERROR (attempt {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2)
+
+    if reply_text is None:
+        reply_text = "Sorry, I'm having trouble right now. Please try again in a moment."
+
+    twiml.message(reply_text)
     return Response(content=str(twiml), media_type="application/xml")
