@@ -80,3 +80,27 @@ async def whatsapp_reply(request: Request):
 
     twiml.message(reply_text)
     return Response(content=str(twiml), media_type="application/xml")
+
+@app.get("/webhook")
+async def verify_webhook(request: Request):
+    mode = request.query_params.get("hub.mode")
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+
+    verify_token = os.getenv("WHATSAPP_VERIFY_TOKEN")
+
+    if mode == "subscribe" and token == verify_token:
+        print("WEBHOOK VERIFIED")
+        return Response(content=challenge, media_type="text/plain")
+
+    return Response(content="Verification failed", status_code=403)
+
+
+@app.post("/webhook")
+async def receive_webhook(request: Request):
+    data = await request.json()
+
+    print("META WHATSAPP WEBHOOK:")
+    print(data)
+
+    return {"status": "ok"}
