@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from google import genai
@@ -9,19 +9,26 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 import os
 import time
-import httpx
+import requests
 
-# --------------------------------------------------
+
+# =========================================================
 # ENVIRONMENT
-# --------------------------------------------------
+# =========================================================
 
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+
+# =========================================================
+# FASTAPI APP
+# =========================================================
 
 app = FastAPI()
 
@@ -33,9 +40,9 @@ app.add_middleware(
 )
 
 
-# --------------------------------------------------
+# =========================================================
 # HEALTH CHECK
-# --------------------------------------------------
+# =========================================================
 
 @app.get("/health")
 def health_check():
@@ -45,9 +52,145 @@ def health_check():
     }
 
 
-# --------------------------------------------------
+# =========================================================
+# PRIVACY POLICY
+# =========================================================
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_policy():
+
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+
+        <meta name="viewport"
+              content="width=device-width, initial-scale=1.0">
+
+        <title>Helios Chatbot - Privacy Policy</title>
+
+        <style>
+
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 850px;
+                margin: 40px auto;
+                padding: 20px;
+                line-height: 1.7;
+                color: #222;
+            }
+
+            h1 {
+                margin-bottom: 5px;
+            }
+
+            h2 {
+                margin-top: 30px;
+            }
+
+        </style>
+
+    </head>
+
+    <body>
+
+        <h1>Privacy Policy – Helios Chatbot</h1>
+
+        <p>
+            <strong>Last updated:</strong>
+            September 21, 2026
+        </p>
+
+        <p>
+            Helios Chatbot provides an AI-powered conversational
+            service through WhatsApp and web-based interfaces.
+        </p>
+
+
+        <h2>Information We Process</h2>
+
+        <p>
+            When you interact with Helios Chatbot, we may process
+            information such as your WhatsApp phone number,
+            profile information made available through WhatsApp,
+            and messages you send to the chatbot.
+        </p>
+
+
+        <h2>How We Use Information</h2>
+
+        <p>
+            We use this information to receive and respond to
+            messages, operate the chatbot, provide customer
+            support, and improve the service.
+        </p>
+
+
+        <h2>AI Processing</h2>
+
+        <p>
+            Messages may be processed using third-party AI and
+            cloud service providers when necessary to generate
+            chatbot responses and operate the service.
+        </p>
+
+
+        <h2>Data Sharing</h2>
+
+        <p>
+            We do not sell personal information. Information may
+            be processed by service providers necessary for
+            operating the chatbot, including messaging, hosting,
+            and AI infrastructure providers.
+        </p>
+
+
+        <h2>Data Retention</h2>
+
+        <p>
+            Information is retained only for as long as reasonably
+            necessary to provide and maintain the service or comply
+            with applicable legal requirements.
+        </p>
+
+
+        <h2>Your Choices</h2>
+
+        <p>
+            You may stop interacting with the chatbot at any time.
+            You may also contact us regarding questions about your
+            information or requests concerning your data.
+        </p>
+
+
+        <h2>Contact</h2>
+
+        <p>
+            For privacy-related questions or requests:
+            <br><br>
+            Email: g1592781@gmail.com
+        </p>
+
+
+        <h2>Changes to This Policy</h2>
+
+        <p>
+            This Privacy Policy may be updated periodically.
+            Updates will be published on this page with a revised
+            effective date.
+        </p>
+
+    </body>
+
+    </html>
+    """
+
+
+# =========================================================
 # WEB CHATBOT
-# --------------------------------------------------
+# =========================================================
 
 class HistoryItem(BaseModel):
     role: str
@@ -65,11 +208,14 @@ def chat(request: ChatRequest):
     contents = []
 
     for item in request.history:
+
         contents.append(
             types.Content(
                 role=item.role,
                 parts=[
-                    types.Part.from_text(text=item.text)
+                    types.Part.from_text(
+                        text=item.text
+                    )
                 ]
             )
         )
@@ -78,24 +224,36 @@ def chat(request: ChatRequest):
         types.Content(
             role="user",
             parts=[
-                types.Part.from_text(text=request.message)
+                types.Part.from_text(
+                    text=request.message
+                )
             ]
         )
     )
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=contents
-    )
+    try:
 
-    return {
-        "reply": response.text
-    }
+        response = client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=contents
+        )
+
+        return {
+            "reply": response.text
+        }
+
+    except Exception as e:
+
+        print("WEB CHAT ERROR:", e)
+
+        return {
+            "reply": "Sorry, I'm having trouble right now. Please try again."
+        }
 
 
-# --------------------------------------------------
+# =========================================================
 # OLD TWILIO WHATSAPP ENDPOINT
-# --------------------------------------------------
+# =========================================================
 
 @app.post("/whatsapp")
 async def whatsapp_reply(request: Request):
@@ -106,8 +264,10 @@ async def whatsapp_reply(request: Request):
 
     twiml = MessagingResponse()
 
-    max_retries = 2
     reply_text = None
+
+    max_retries = 2
+
 
     for attempt in range(max_retries):
 
@@ -125,18 +285,21 @@ async def whatsapp_reply(request: Request):
         except Exception as e:
 
             print(
-                f"TWILIO WHATSAPP ERROR "
+                f"TWILIO GEMINI ERROR "
                 f"(attempt {attempt + 1}): {e}"
             )
 
             if attempt < max_retries - 1:
                 time.sleep(2)
 
+
     if reply_text is None:
+
         reply_text = (
             "Sorry, I'm having trouble right now. "
             "Please try again in a moment."
         )
+
 
     twiml.message(reply_text)
 
@@ -146,16 +309,19 @@ async def whatsapp_reply(request: Request):
     )
 
 
-# --------------------------------------------------
-# META WEBHOOK VERIFICATION
-# --------------------------------------------------
+# =========================================================
+# META WHATSAPP WEBHOOK VERIFICATION
+# =========================================================
 
 @app.get("/webhook")
 async def verify_webhook(request: Request):
 
     mode = request.query_params.get("hub.mode")
+
     token = request.query_params.get("hub.verify_token")
+
     challenge = request.query_params.get("hub.challenge")
+
 
     if (
         mode == "subscribe"
@@ -169,67 +335,162 @@ async def verify_webhook(request: Request):
             media_type="text/plain"
         )
 
+
+    print("META WEBHOOK VERIFICATION FAILED")
+
     return Response(
         content="Verification failed",
         status_code=403
     )
 
 
-# --------------------------------------------------
-# SEND META WHATSAPP MESSAGE
-# --------------------------------------------------
+# =========================================================
+# GENERATE GEMINI RESPONSE
+# =========================================================
 
-async def send_meta_whatsapp_message(
-    phone_number_id: str,
-    recipient: str,
-    message: str
-):
+def generate_ai_reply(message):
+
+    max_retries = 3
+
+
+    for attempt in range(max_retries):
+
+        try:
+
+            response = client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=message
+            )
+
+            if response.text:
+                return response.text
+
+
+        except Exception as e:
+
+            print(
+                f"GEMINI WHATSAPP ERROR "
+                f"(attempt {attempt + 1}): {e}"
+            )
+
+            if attempt < max_retries - 1:
+                time.sleep(3)
+
+
+    return (
+        "Sorry, I'm having trouble right now. "
+        "Please try again in a moment."
+    )
+
+
+# =========================================================
+# SEND META WHATSAPP MESSAGE
+# =========================================================
+
+def send_whatsapp_message(to_number, message):
 
     if not WHATSAPP_ACCESS_TOKEN:
-        print("ERROR: WHATSAPP_ACCESS_TOKEN is missing")
-        return
+
+        print(
+            "ERROR: WHATSAPP_ACCESS_TOKEN "
+            "is missing"
+        )
+
+        return False
+
+
+    if not WHATSAPP_PHONE_NUMBER_ID:
+
+        print(
+            "ERROR: WHATSAPP_PHONE_NUMBER_ID "
+            "is missing"
+        )
+
+        return False
+
 
     url = (
         f"https://graph.facebook.com/v26.0/"
-        f"{phone_number_id}/messages"
+        f"{WHATSAPP_PHONE_NUMBER_ID}/messages"
     )
 
+
     headers = {
-        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
+        "Authorization":
+            f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+
+        "Content-Type":
+            "application/json"
     }
 
+
     payload = {
+
         "messaging_product": "whatsapp",
+
         "recipient_type": "individual",
-        "to": recipient,
+
+        "to": to_number,
+
         "type": "text",
+
         "text": {
             "preview_url": False,
             "body": message
         }
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as http_client:
 
-        response = await http_client.post(
+    try:
+
+        response = requests.post(
             url,
             headers=headers,
-            json=payload
+            json=payload,
+            timeout=30
+        )
+
+
+        print(
+            "META SEND STATUS:",
+            response.status_code
         )
 
         print(
             "META SEND RESPONSE:",
-            response.status_code,
             response.text
         )
 
-        response.raise_for_status()
+
+        if response.status_code in [200, 201]:
+
+            print(
+                "WHATSAPP REPLY SENT SUCCESSFULLY"
+            )
+
+            return True
 
 
-# --------------------------------------------------
-# META WHATSAPP WEBHOOK
-# --------------------------------------------------
+        print(
+            "WHATSAPP SEND FAILED"
+        )
+
+        return False
+
+
+    except Exception as e:
+
+        print(
+            "WHATSAPP SEND ERROR:",
+            e
+        )
+
+        return False
+
+
+# =========================================================
+# META WHATSAPP INCOMING WEBHOOK
+# =========================================================
 
 @app.post("/webhook")
 async def receive_webhook(request: Request):
@@ -238,127 +499,150 @@ async def receive_webhook(request: Request):
 
         data = await request.json()
 
-        print("META WHATSAPP WEBHOOK:")
+        print(
+            "META WHATSAPP WEBHOOK:"
+        )
+
         print(data)
 
-        # ------------------------------------------
-        # Extract webhook data
-        # ------------------------------------------
 
-        entry = data.get("entry", [])
+        # -----------------------------------------
+        # GET ENTRY
+        # -----------------------------------------
 
-        if not entry:
-            return {"status": "ok"}
+        entries = data.get(
+            "entry",
+            []
+        )
 
-        changes = entry[0].get("changes", [])
 
-        if not changes:
-            return {"status": "ok"}
+        for entry in entries:
 
-        value = changes[0].get("value", {})
-
-        # Ignore delivery/read/status notifications
-        messages = value.get("messages")
-
-        if not messages:
-            return {"status": "ok"}
-
-        message = messages[0]
-
-        # Only process text messages for now
-        if message.get("type") != "text":
-            print(
-                "IGNORED MESSAGE TYPE:",
-                message.get("type")
+            changes = entry.get(
+                "changes",
+                []
             )
 
-            return {"status": "ok"}
 
-        sender = message.get("from")
+            for change in changes:
 
-        incoming_text = (
-            message
-            .get("text", {})
-            .get("body", "")
-            .strip()
-        )
+                value = change.get(
+                    "value",
+                    {}
+                )
 
-        metadata = value.get("metadata", {})
 
-        phone_number_id = metadata.get(
-            "phone_number_id"
-        )
+                # ---------------------------------
+                # IGNORE DELIVERY / READ STATUSES
+                # ---------------------------------
 
-        if not sender or not incoming_text or not phone_number_id:
+                messages = value.get(
+                    "messages"
+                )
 
-            print("Missing required WhatsApp message data")
 
-            return {"status": "ok"}
+                if not messages:
 
-        print("FROM:", sender)
-        print("MESSAGE:", incoming_text)
+                    continue
 
-        # ------------------------------------------
-        # Generate Gemini response
-        # ------------------------------------------
 
-        reply_text = None
+                for message in messages:
 
-        max_retries = 2
-
-        for attempt in range(max_retries):
-
-            try:
-
-                gemini_response = (
-                    client.models.generate_content(
-                        model="gemini-3.6-flash",
-                        contents=incoming_text
+                    sender = message.get(
+                        "from"
                     )
-                )
 
-                reply_text = gemini_response.text
+                    message_type = message.get(
+                        "type"
+                    )
 
-                break
 
-            except Exception as e:
+                    if not sender:
 
-                print(
-                    f"GEMINI WHATSAPP ERROR "
-                    f"(attempt {attempt + 1}): {e}"
-                )
+                        continue
 
-                if attempt < max_retries - 1:
-                    await __import__("asyncio").sleep(2)
 
-        if not reply_text:
+                    # -----------------------------
+                    # TEXT MESSAGE
+                    # -----------------------------
 
-            reply_text = (
-                "Sorry, I'm having trouble right now. "
-                "Please try again in a moment."
-            )
+                    if message_type == "text":
 
-        # WhatsApp text messages have size limits.
-        reply_text = reply_text[:4000]
+                        text_data = message.get(
+                            "text",
+                            {}
+                        )
 
-        print("GEMINI REPLY:", reply_text)
+                        incoming_text = text_data.get(
+                            "body",
+                            ""
+                        ).strip()
 
-        # ------------------------------------------
-        # Send reply through Meta Cloud API
-        # ------------------------------------------
 
-        await send_meta_whatsapp_message(
-            phone_number_id=phone_number_id,
-            recipient=sender,
-            message=reply_text
-        )
+                        if not incoming_text:
 
-        return {"status": "ok"}
+                            continue
+
+
+                        print(
+                            "FROM:",
+                            sender
+                        )
+
+                        print(
+                            "MESSAGE:",
+                            incoming_text
+                        )
+
+
+                        # -------------------------
+                        # GENERATE AI RESPONSE
+                        # -------------------------
+
+                        ai_reply = generate_ai_reply(
+                            incoming_text
+                        )
+
+
+                        print(
+                            "GEMINI REPLY:",
+                            ai_reply
+                        )
+
+
+                        # -------------------------
+                        # SEND WHATSAPP RESPONSE
+                        # -------------------------
+
+                        send_whatsapp_message(
+                            sender,
+                            ai_reply
+                        )
+
+
+                    else:
+
+                        print(
+                            "IGNORED MESSAGE TYPE:",
+                            message_type
+                        )
+
+
+        # Meta expects quick 200 response
+        return {
+            "status": "ok"
+        }
+
 
     except Exception as e:
 
-        # Log error but acknowledge webhook so Meta
-        # does not repeatedly retry the same event.
-        print("META WEBHOOK ERROR:", str(e))
+        print(
+            "META WEBHOOK ERROR:",
+            e
+        )
 
-        return {"status": "ok"}
+        # Still return 200 so Meta does not
+        # repeatedly retry malformed events.
+        return {
+            "status": "ok"
+        }
