@@ -4,11 +4,9 @@ from fastapi.responses import Response, HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
 from twilio.twiml.messaging_response import MessagingResponse
 
 import os
-import time
 import requests
 
 
@@ -26,7 +24,10 @@ WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
 
 
-# Gemini client
+# =========================================================
+# GEMINI CLIENT
+# =========================================================
+
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -59,9 +60,9 @@ def health_check():
 
     return {
         "status": "ok",
-        "message": "Server is running!",
-        "gemini_configured": bool(GEMINI_API_KEY),
+        "message": "Helios AI server is running!",
         "groq_configured": bool(GROQ_API_KEY),
+        "gemini_configured": bool(GEMINI_API_KEY),
         "whatsapp_configured": bool(
             WHATSAPP_ACCESS_TOKEN
             and WHATSAPP_PHONE_NUMBER_ID
@@ -78,6 +79,7 @@ def privacy_policy():
 
     return """
     <!DOCTYPE html>
+
     <html lang="en">
 
     <head>
@@ -127,6 +129,7 @@ def privacy_policy():
             September 21, 2026
         </p>
 
+
         <p>
             Helios Chatbot provides an AI-powered
             conversational service through WhatsApp
@@ -134,7 +137,9 @@ def privacy_policy():
         </p>
 
 
-        <h2>Information We Process</h2>
+        <h2>
+            Information We Process
+        </h2>
 
         <p>
             When you interact with Helios Chatbot,
@@ -145,7 +150,9 @@ def privacy_policy():
         </p>
 
 
-        <h2>How We Use Information</h2>
+        <h2>
+            How We Use Information
+        </h2>
 
         <p>
             We use this information to receive and
@@ -155,7 +162,9 @@ def privacy_policy():
         </p>
 
 
-        <h2>AI Processing</h2>
+        <h2>
+            AI Processing
+        </h2>
 
         <p>
             Messages may be processed using third-party
@@ -165,7 +174,9 @@ def privacy_policy():
         </p>
 
 
-        <h2>Data Sharing</h2>
+        <h2>
+            Data Sharing
+        </h2>
 
         <p>
             We do not sell personal information.
@@ -176,7 +187,9 @@ def privacy_policy():
         </p>
 
 
-        <h2>Data Retention</h2>
+        <h2>
+            Data Retention
+        </h2>
 
         <p>
             Information is retained only for as long
@@ -186,7 +199,9 @@ def privacy_policy():
         </p>
 
 
-        <h2>Your Choices</h2>
+        <h2>
+            Your Choices
+        </h2>
 
         <p>
             You may stop interacting with the chatbot
@@ -196,7 +211,9 @@ def privacy_policy():
         </p>
 
 
-        <h2>Contact</h2>
+        <h2>
+            Contact
+        </h2>
 
         <p>
             For privacy-related questions or requests:
@@ -205,7 +222,9 @@ def privacy_policy():
         </p>
 
 
-        <h2>Changes to This Policy</h2>
+        <h2>
+            Changes to This Policy
+        </h2>
 
         <p>
             This Privacy Policy may be updated
@@ -220,14 +239,17 @@ def privacy_policy():
 
 
 # =========================================================
-# GROQ RESPONSE
+# GROQ AI
+# PRIMARY AI PROVIDER
 # =========================================================
 
 def generate_groq_reply(message):
 
     if not GROQ_API_KEY:
 
-        print("GROQ_API_KEY IS MISSING")
+        print(
+            "ERROR: GROQ_API_KEY IS MISSING"
+        )
 
         return None
 
@@ -256,16 +278,27 @@ def generate_groq_reply(message):
         "messages": [
 
             {
-    "role": "system",
-    "content": (
-        "You are Helios AI Assistant, the AI chatbot for Helios. "
-        "Never claim that you were created by Google, Groq, Meta, "
-        "OpenAI, or any other AI provider. "
-        "If asked who you are, say: "
-        "'I am Helios AI Assistant.' "
-        "Be helpful, concise, friendly, and professional."
-    ),
-},
+                "role": "system",
+
+                "content": (
+                    "You are Helios AI Assistant, "
+                    "the AI chatbot for Helios. "
+
+                    "Never claim that you were created "
+                    "by Google, Groq, Meta, OpenAI, "
+                    "or any other AI provider. "
+
+                    "If someone asks who you are, say "
+                    "'I am Helios AI Assistant.' "
+
+                    "Be helpful, concise, friendly, "
+                    "and professional. "
+
+                    "Answer the user's question directly. "
+                    "You may respond in the same language "
+                    "the user uses when appropriate."
+                ),
+            },
 
             {
                 "role": "user",
@@ -299,21 +332,29 @@ def generate_groq_reply(message):
 
             data = response.json()
 
-            reply = (
-                data
-                .get("choices", [{}])[0]
-                .get("message", {})
-                .get("content")
+
+            choices = data.get(
+                "choices",
+                []
             )
 
 
-            if reply:
+            if choices:
 
-                print(
-                    "GROQ RESPONSE SUCCESS"
+                reply = (
+                    choices[0]
+                    .get("message", {})
+                    .get("content")
                 )
 
-                return reply.strip()
+
+                if reply:
+
+                    print(
+                        "GROQ RESPONSE SUCCESS"
+                    )
+
+                    return reply.strip()
 
 
         print(
@@ -334,14 +375,17 @@ def generate_groq_reply(message):
 
 
 # =========================================================
-# GEMINI RESPONSE
+# GEMINI AI
+# FALLBACK PROVIDER
 # =========================================================
 
 def generate_gemini_reply(message):
 
     if not gemini_client:
 
-        print("GEMINI_API_KEY IS MISSING")
+        print(
+            "ERROR: GEMINI_API_KEY IS MISSING"
+        )
 
         return None
 
@@ -350,7 +394,9 @@ def generate_gemini_reply(message):
 
         response = (
             gemini_client.models.generate_content(
+
                 model="gemini-3.6-flash",
+
                 contents=message,
             )
         )
@@ -377,39 +423,20 @@ def generate_gemini_reply(message):
 
 
 # =========================================================
-# MAIN AI ROUTER
+# AI ROUTER
 #
-# 1. Try Gemini
-# 2. If Gemini fails/quota exceeded -> Groq
+# FIRST  -> GROQ
+# SECOND -> GEMINI
 # =========================================================
 
 def generate_ai_reply(message):
 
     # -----------------------------------------
-    # TRY GEMINI FIRST
-    # -----------------------------------------
-
-    print("TRYING GEMINI...")
-
-
-    gemini_reply = generate_gemini_reply(
-        message
-    )
-
-
-    if gemini_reply:
-
-        print("AI PROVIDER: GEMINI")
-
-        return gemini_reply
-
-
-    # -----------------------------------------
-    # GEMINI FAILED -> GROQ FALLBACK
+    # TRY GROQ FIRST
     # -----------------------------------------
 
     print(
-        "GEMINI FAILED - TRYING GROQ..."
+        "TRYING GROQ..."
     )
 
 
@@ -420,9 +447,34 @@ def generate_ai_reply(message):
 
     if groq_reply:
 
-        print("AI PROVIDER: GROQ")
+        print(
+            "AI PROVIDER: GROQ"
+        )
 
         return groq_reply
+
+
+    # -----------------------------------------
+    # GROQ FAILED -> TRY GEMINI
+    # -----------------------------------------
+
+    print(
+        "GROQ FAILED - TRYING GEMINI..."
+    )
+
+
+    gemini_reply = generate_gemini_reply(
+        message
+    )
+
+
+    if gemini_reply:
+
+        print(
+            "AI PROVIDER: GEMINI"
+        )
+
+        return gemini_reply
 
 
     # -----------------------------------------
@@ -459,9 +511,6 @@ class ChatRequest(BaseModel):
 @app.post("/chat")
 def chat(request: ChatRequest):
 
-    # For now the common AI router is used.
-    # If Gemini quota is exhausted, Groq is automatic.
-
     reply = generate_ai_reply(
         request.message
     )
@@ -481,10 +530,14 @@ async def whatsapp_reply(request: Request):
 
     form = await request.form()
 
-    incoming_msg = form.get(
-        "Body",
-        ""
-    ).strip()
+
+    incoming_msg = (
+        form.get(
+            "Body",
+            ""
+        )
+        .strip()
+    )
 
 
     twiml = MessagingResponse()
@@ -495,6 +548,7 @@ async def whatsapp_reply(request: Request):
         twiml.message(
             "Please send a text message."
         )
+
 
         return Response(
             content=str(twiml),
@@ -529,9 +583,11 @@ async def verify_webhook(request: Request):
         "hub.mode"
     )
 
+
     token = request.query_params.get(
         "hub.verify_token"
     )
+
 
     challenge = request.query_params.get(
         "hub.challenge"
@@ -546,6 +602,7 @@ async def verify_webhook(request: Request):
         print(
             "META WEBHOOK VERIFIED"
         )
+
 
         return Response(
             content=challenge,
@@ -705,6 +762,10 @@ async def receive_webhook(request: Request):
         print(data)
 
 
+        # -----------------------------------------
+        # GET ENTRIES
+        # -----------------------------------------
+
         entries = data.get(
             "entry",
             []
@@ -727,9 +788,9 @@ async def receive_webhook(request: Request):
                 )
 
 
-                # ---------------------------------
-                # IGNORE DELIVERY / READ STATUS
-                # ---------------------------------
+                # =================================
+                # IGNORE DELIVERY / READ STATUSES
+                # =================================
 
                 messages = value.get(
                     "messages"
@@ -741,11 +802,16 @@ async def receive_webhook(request: Request):
                     continue
 
 
+                # =================================
+                # PROCESS MESSAGES
+                # =================================
+
                 for message in messages:
 
                     sender = message.get(
                         "from"
                     )
+
 
                     message_type = message.get(
                         "type"
@@ -796,9 +862,9 @@ async def receive_webhook(request: Request):
                         )
 
 
-                        # -------------------------
+                        # =========================
                         # GENERATE AI RESPONSE
-                        # -------------------------
+                        # =========================
 
                         ai_reply = (
                             generate_ai_reply(
@@ -813,15 +879,19 @@ async def receive_webhook(request: Request):
                         )
 
 
-                        # -------------------------
+                        # =========================
                         # SEND WHATSAPP RESPONSE
-                        # -------------------------
+                        # =========================
 
                         send_whatsapp_message(
                             sender,
                             ai_reply
                         )
 
+
+                    # =============================
+                    # NON-TEXT MESSAGE
+                    # =============================
 
                     else:
 
@@ -846,8 +916,8 @@ async def receive_webhook(request: Request):
         )
 
 
-        # Return 200 so Meta does not keep
-        # retrying malformed webhook events.
+        # Still return 200 so Meta does not
+        # repeatedly retry malformed events.
 
         return {
             "status": "ok"
