@@ -19,11 +19,20 @@ import requests
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Gemini client
+gemini_client = None
+
+if GEMINI_API_KEY:
+    gemini_client = genai.Client(
+        api_key=GEMINI_API_KEY
+    )
 
 
 # =========================================================
@@ -31,6 +40,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # =========================================================
 
 app = FastAPI()
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,9 +56,16 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
+
     return {
         "status": "ok",
-        "message": "Server is running!"
+        "message": "Server is running!",
+        "gemini_configured": bool(GEMINI_API_KEY),
+        "groq_configured": bool(GROQ_API_KEY),
+        "whatsapp_configured": bool(
+            WHATSAPP_ACCESS_TOKEN
+            and WHATSAPP_PHONE_NUMBER_ID
+        ),
     }
 
 
@@ -64,12 +81,17 @@ def privacy_policy():
     <html lang="en">
 
     <head>
+
         <meta charset="UTF-8">
 
-        <meta name="viewport"
-              content="width=device-width, initial-scale=1.0">
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+        >
 
-        <title>Helios Chatbot - Privacy Policy</title>
+        <title>
+            Helios Chatbot - Privacy Policy
+        </title>
 
         <style>
 
@@ -96,7 +118,9 @@ def privacy_policy():
 
     <body>
 
-        <h1>Privacy Policy – Helios Chatbot</h1>
+        <h1>
+            Privacy Policy – Helios Chatbot
+        </h1>
 
         <p>
             <strong>Last updated:</strong>
@@ -104,45 +128,50 @@ def privacy_policy():
         </p>
 
         <p>
-            Helios Chatbot provides an AI-powered conversational
-            service through WhatsApp and web-based interfaces.
+            Helios Chatbot provides an AI-powered
+            conversational service through WhatsApp
+            and web-based interfaces.
         </p>
 
 
         <h2>Information We Process</h2>
 
         <p>
-            When you interact with Helios Chatbot, we may process
-            information such as your WhatsApp phone number,
-            profile information made available through WhatsApp,
-            and messages you send to the chatbot.
+            When you interact with Helios Chatbot,
+            we may process information such as your
+            WhatsApp phone number, profile information
+            made available through WhatsApp, and
+            messages you send to the chatbot.
         </p>
 
 
         <h2>How We Use Information</h2>
 
         <p>
-            We use this information to receive and respond to
-            messages, operate the chatbot, provide customer
-            support, and improve the service.
+            We use this information to receive and
+            respond to messages, operate the chatbot,
+            provide customer support, and improve
+            the service.
         </p>
 
 
         <h2>AI Processing</h2>
 
         <p>
-            Messages may be processed using third-party AI and
-            cloud service providers when necessary to generate
-            chatbot responses and operate the service.
+            Messages may be processed using third-party
+            AI and cloud service providers when necessary
+            to generate chatbot responses and operate
+            the service.
         </p>
 
 
         <h2>Data Sharing</h2>
 
         <p>
-            We do not sell personal information. Information may
-            be processed by service providers necessary for
-            operating the chatbot, including messaging, hosting,
+            We do not sell personal information.
+            Information may be processed by service
+            providers necessary for operating the
+            chatbot, including messaging, hosting,
             and AI infrastructure providers.
         </p>
 
@@ -150,18 +179,20 @@ def privacy_policy():
         <h2>Data Retention</h2>
 
         <p>
-            Information is retained only for as long as reasonably
-            necessary to provide and maintain the service or comply
-            with applicable legal requirements.
+            Information is retained only for as long
+            as reasonably necessary to provide and
+            maintain the service or comply with
+            applicable legal requirements.
         </p>
 
 
         <h2>Your Choices</h2>
 
         <p>
-            You may stop interacting with the chatbot at any time.
-            You may also contact us regarding questions about your
-            information or requests concerning your data.
+            You may stop interacting with the chatbot
+            at any time. You may also contact us
+            regarding questions about your information
+            or requests concerning your data.
         </p>
 
 
@@ -177,9 +208,9 @@ def privacy_policy():
         <h2>Changes to This Policy</h2>
 
         <p>
-            This Privacy Policy may be updated periodically.
-            Updates will be published on this page with a revised
-            effective date.
+            This Privacy Policy may be updated
+            periodically. Updates will be published
+            on this page with a revised effective date.
         </p>
 
     </body>
@@ -189,15 +220,235 @@ def privacy_policy():
 
 
 # =========================================================
+# GROQ RESPONSE
+# =========================================================
+
+def generate_groq_reply(message):
+
+    if not GROQ_API_KEY:
+
+        print("GROQ_API_KEY IS MISSING")
+
+        return None
+
+
+    url = (
+        "https://api.groq.com/openai/v1/"
+        "chat/completions"
+    )
+
+
+    headers = {
+
+        "Authorization":
+            f"Bearer {GROQ_API_KEY}",
+
+        "Content-Type":
+            "application/json",
+    }
+
+
+    payload = {
+
+        "model":
+            "llama-3.3-70b-versatile",
+
+        "messages": [
+
+            {
+                "role": "system",
+                "content": (
+                    "You are Helios Chatbot, a helpful "
+                    "AI assistant. Give clear, concise "
+                    "and friendly responses."
+                ),
+            },
+
+            {
+                "role": "user",
+                "content": message,
+            },
+        ],
+
+        "temperature": 0.7,
+
+        "max_tokens": 500,
+    }
+
+
+    try:
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+
+
+        print(
+            "GROQ STATUS:",
+            response.status_code
+        )
+
+
+        if response.status_code == 200:
+
+            data = response.json()
+
+            reply = (
+                data
+                .get("choices", [{}])[0]
+                .get("message", {})
+                .get("content")
+            )
+
+
+            if reply:
+
+                print(
+                    "GROQ RESPONSE SUCCESS"
+                )
+
+                return reply.strip()
+
+
+        print(
+            "GROQ API ERROR:",
+            response.text
+        )
+
+
+    except Exception as e:
+
+        print(
+            "GROQ REQUEST ERROR:",
+            e
+        )
+
+
+    return None
+
+
+# =========================================================
+# GEMINI RESPONSE
+# =========================================================
+
+def generate_gemini_reply(message):
+
+    if not gemini_client:
+
+        print("GEMINI_API_KEY IS MISSING")
+
+        return None
+
+
+    try:
+
+        response = (
+            gemini_client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=message,
+            )
+        )
+
+
+        if response.text:
+
+            print(
+                "GEMINI RESPONSE SUCCESS"
+            )
+
+            return response.text.strip()
+
+
+    except Exception as e:
+
+        print(
+            "GEMINI ERROR:",
+            e
+        )
+
+
+    return None
+
+
+# =========================================================
+# MAIN AI ROUTER
+#
+# 1. Try Gemini
+# 2. If Gemini fails/quota exceeded -> Groq
+# =========================================================
+
+def generate_ai_reply(message):
+
+    # -----------------------------------------
+    # TRY GEMINI FIRST
+    # -----------------------------------------
+
+    print("TRYING GEMINI...")
+
+
+    gemini_reply = generate_gemini_reply(
+        message
+    )
+
+
+    if gemini_reply:
+
+        print("AI PROVIDER: GEMINI")
+
+        return gemini_reply
+
+
+    # -----------------------------------------
+    # GEMINI FAILED -> GROQ FALLBACK
+    # -----------------------------------------
+
+    print(
+        "GEMINI FAILED - TRYING GROQ..."
+    )
+
+
+    groq_reply = generate_groq_reply(
+        message
+    )
+
+
+    if groq_reply:
+
+        print("AI PROVIDER: GROQ")
+
+        return groq_reply
+
+
+    # -----------------------------------------
+    # BOTH FAILED
+    # -----------------------------------------
+
+    print(
+        "ALL AI PROVIDERS FAILED"
+    )
+
+
+    return (
+        "Sorry, I'm having trouble right now. "
+        "Please try again in a moment."
+    )
+
+
+# =========================================================
 # WEB CHATBOT
 # =========================================================
 
 class HistoryItem(BaseModel):
+
     role: str
     text: str
 
 
 class ChatRequest(BaseModel):
+
     message: str
     history: list[HistoryItem] = []
 
@@ -205,50 +456,17 @@ class ChatRequest(BaseModel):
 @app.post("/chat")
 def chat(request: ChatRequest):
 
-    contents = []
+    # For now the common AI router is used.
+    # If Gemini quota is exhausted, Groq is automatic.
 
-    for item in request.history:
-
-        contents.append(
-            types.Content(
-                role=item.role,
-                parts=[
-                    types.Part.from_text(
-                        text=item.text
-                    )
-                ]
-            )
-        )
-
-    contents.append(
-        types.Content(
-            role="user",
-            parts=[
-                types.Part.from_text(
-                    text=request.message
-                )
-            ]
-        )
+    reply = generate_ai_reply(
+        request.message
     )
 
-    try:
 
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=contents
-        )
-
-        return {
-            "reply": response.text
-        }
-
-    except Exception as e:
-
-        print("WEB CHAT ERROR:", e)
-
-        return {
-            "reply": "Sorry, I'm having trouble right now. Please try again."
-        }
+    return {
+        "reply": reply
+    }
 
 
 # =========================================================
@@ -260,52 +478,40 @@ async def whatsapp_reply(request: Request):
 
     form = await request.form()
 
-    incoming_msg = form.get("Body", "")
+    incoming_msg = form.get(
+        "Body",
+        ""
+    ).strip()
+
 
     twiml = MessagingResponse()
 
-    reply_text = None
 
-    max_retries = 2
+    if not incoming_msg:
 
+        twiml.message(
+            "Please send a text message."
+        )
 
-    for attempt in range(max_retries):
-
-        try:
-
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=incoming_msg
-            )
-
-            reply_text = response.text
-
-            break
-
-        except Exception as e:
-
-            print(
-                f"TWILIO GEMINI ERROR "
-                f"(attempt {attempt + 1}): {e}"
-            )
-
-            if attempt < max_retries - 1:
-                time.sleep(2)
-
-
-    if reply_text is None:
-
-        reply_text = (
-            "Sorry, I'm having trouble right now. "
-            "Please try again in a moment."
+        return Response(
+            content=str(twiml),
+            media_type="application/xml",
         )
 
 
-    twiml.message(reply_text)
+    reply_text = generate_ai_reply(
+        incoming_msg
+    )
+
+
+    twiml.message(
+        reply_text
+    )
+
 
     return Response(
         content=str(twiml),
-        media_type="application/xml"
+        media_type="application/xml",
     )
 
 
@@ -316,11 +522,17 @@ async def whatsapp_reply(request: Request):
 @app.get("/webhook")
 async def verify_webhook(request: Request):
 
-    mode = request.query_params.get("hub.mode")
+    mode = request.query_params.get(
+        "hub.mode"
+    )
 
-    token = request.query_params.get("hub.verify_token")
+    token = request.query_params.get(
+        "hub.verify_token"
+    )
 
-    challenge = request.query_params.get("hub.challenge")
+    challenge = request.query_params.get(
+        "hub.challenge"
+    )
 
 
     if (
@@ -328,58 +540,24 @@ async def verify_webhook(request: Request):
         and token == WHATSAPP_VERIFY_TOKEN
     ):
 
-        print("META WEBHOOK VERIFIED")
+        print(
+            "META WEBHOOK VERIFIED"
+        )
 
         return Response(
             content=challenge,
-            media_type="text/plain"
+            media_type="text/plain",
         )
 
 
-    print("META WEBHOOK VERIFICATION FAILED")
-
-    return Response(
-        content="Verification failed",
-        status_code=403
+    print(
+        "META WEBHOOK VERIFICATION FAILED"
     )
 
 
-# =========================================================
-# GENERATE GEMINI RESPONSE
-# =========================================================
-
-def generate_ai_reply(message):
-
-    max_retries = 3
-
-
-    for attempt in range(max_retries):
-
-        try:
-
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=message
-            )
-
-            if response.text:
-                return response.text
-
-
-        except Exception as e:
-
-            print(
-                f"GEMINI WHATSAPP ERROR "
-                f"(attempt {attempt + 1}): {e}"
-            )
-
-            if attempt < max_retries - 1:
-                time.sleep(3)
-
-
-    return (
-        "Sorry, I'm having trouble right now. "
-        "Please try again in a moment."
+    return Response(
+        content="Verification failed",
+        status_code=403,
     )
 
 
@@ -387,7 +565,10 @@ def generate_ai_reply(message):
 # SEND META WHATSAPP MESSAGE
 # =========================================================
 
-def send_whatsapp_message(to_number, message):
+def send_whatsapp_message(
+    to_number,
+    message
+):
 
     if not WHATSAPP_ACCESS_TOKEN:
 
@@ -410,34 +591,43 @@ def send_whatsapp_message(to_number, message):
 
 
     url = (
-        f"https://graph.facebook.com/v26.0/"
+        "https://graph.facebook.com/v26.0/"
         f"{WHATSAPP_PHONE_NUMBER_ID}/messages"
     )
 
 
     headers = {
+
         "Authorization":
             f"Bearer {WHATSAPP_ACCESS_TOKEN}",
 
         "Content-Type":
-            "application/json"
+            "application/json",
     }
 
 
     payload = {
 
-        "messaging_product": "whatsapp",
+        "messaging_product":
+            "whatsapp",
 
-        "recipient_type": "individual",
+        "recipient_type":
+            "individual",
 
-        "to": to_number,
+        "to":
+            to_number,
 
-        "type": "text",
+        "type":
+            "text",
 
         "text": {
-            "preview_url": False,
-            "body": message
-        }
+
+            "preview_url":
+                False,
+
+            "body":
+                message,
+        },
     }
 
 
@@ -447,7 +637,7 @@ def send_whatsapp_message(to_number, message):
             url,
             headers=headers,
             json=payload,
-            timeout=30
+            timeout=30,
         )
 
 
@@ -456,16 +646,21 @@ def send_whatsapp_message(to_number, message):
             response.status_code
         )
 
+
         print(
             "META SEND RESPONSE:",
             response.text
         )
 
 
-        if response.status_code in [200, 201]:
+        if response.status_code in [
+            200,
+            201,
+        ]:
 
             print(
-                "WHATSAPP REPLY SENT SUCCESSFULLY"
+                "WHATSAPP REPLY "
+                "SENT SUCCESSFULLY"
             )
 
             return True
@@ -499,16 +694,13 @@ async def receive_webhook(request: Request):
 
         data = await request.json()
 
+
         print(
             "META WHATSAPP WEBHOOK:"
         )
 
         print(data)
 
-
-        # -----------------------------------------
-        # GET ENTRY
-        # -----------------------------------------
 
         entries = data.get(
             "entry",
@@ -533,7 +725,7 @@ async def receive_webhook(request: Request):
 
 
                 # ---------------------------------
-                # IGNORE DELIVERY / READ STATUSES
+                # IGNORE DELIVERY / READ STATUS
                 # ---------------------------------
 
                 messages = value.get(
@@ -562,9 +754,9 @@ async def receive_webhook(request: Request):
                         continue
 
 
-                    # -----------------------------
+                    # =============================
                     # TEXT MESSAGE
-                    # -----------------------------
+                    # =============================
 
                     if message_type == "text":
 
@@ -573,10 +765,15 @@ async def receive_webhook(request: Request):
                             {}
                         )
 
-                        incoming_text = text_data.get(
-                            "body",
-                            ""
-                        ).strip()
+
+                        incoming_text = (
+                            text_data
+                            .get(
+                                "body",
+                                ""
+                            )
+                            .strip()
+                        )
 
 
                         if not incoming_text:
@@ -589,6 +786,7 @@ async def receive_webhook(request: Request):
                             sender
                         )
 
+
                         print(
                             "MESSAGE:",
                             incoming_text
@@ -599,13 +797,15 @@ async def receive_webhook(request: Request):
                         # GENERATE AI RESPONSE
                         # -------------------------
 
-                        ai_reply = generate_ai_reply(
-                            incoming_text
+                        ai_reply = (
+                            generate_ai_reply(
+                                incoming_text
+                            )
                         )
 
 
                         print(
-                            "GEMINI REPLY:",
+                            "AI REPLY:",
                             ai_reply
                         )
 
@@ -628,7 +828,8 @@ async def receive_webhook(request: Request):
                         )
 
 
-        # Meta expects quick 200 response
+        # Meta expects HTTP 200
+
         return {
             "status": "ok"
         }
@@ -641,8 +842,10 @@ async def receive_webhook(request: Request):
             e
         )
 
-        # Still return 200 so Meta does not
-        # repeatedly retry malformed events.
+
+        # Return 200 so Meta does not keep
+        # retrying malformed webhook events.
+
         return {
             "status": "ok"
         }
